@@ -1,4 +1,4 @@
-// Ref: 02/06//2026 17:58
+// Ref: 02/07/2026 11:10
 package com.example.teleprompter
 
 import android.app.Notification
@@ -36,6 +36,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb // Import added for Color persistence
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
@@ -87,6 +88,7 @@ class FloatingPrompterService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        loadSettings() // Load saved preferences
         createNotificationChannel()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         setupPrompterWindow()
@@ -99,6 +101,28 @@ class FloatingPrompterService : Service() {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(channel)
     }
+
+    // --- Persistence Logic ---
+    private fun saveSettings() {
+        val prefs = getSharedPreferences("prompter_prefs", MODE_PRIVATE)
+        with(prefs.edit()) {
+            putFloat("font_size", _fontSize.floatValue)
+            putFloat("scroll_speed", _scrollSpeed.floatValue)
+            putFloat("window_alpha", _windowAlpha.floatValue)
+            putInt("text_color", _textColor.value.toArgb())
+            apply()
+        }
+    }
+
+    private fun loadSettings() {
+        val prefs = getSharedPreferences("prompter_prefs", MODE_PRIVATE)
+        _fontSize.floatValue = prefs.getFloat("font_size", 32f)
+        _scrollSpeed.floatValue = prefs.getFloat("scroll_speed", 2f)
+        _windowAlpha.floatValue = prefs.getFloat("window_alpha", 1.0f)
+        val colorArgb = prefs.getInt("text_color", Color.White.toArgb())
+        _textColor.value = Color(colorArgb)
+    }
+    // -------------------------
 
     private fun setupPrompterWindow() {
         prompterParams = WindowManager.LayoutParams(
@@ -194,6 +218,7 @@ class FloatingPrompterService : Service() {
         if (isSettingsOpen) {
             windowManager.removeView(settingsView)
             isSettingsOpen = false
+            saveSettings() // Auto-save when settings close
         } else {
             windowManager.addView(settingsView, settingsParams)
             isSettingsOpen = true
@@ -218,6 +243,7 @@ class FloatingPrompterService : Service() {
     }
 
     override fun onDestroy() {
+        saveSettings() // Save on exit
         super.onDestroy()
         if (::prompterView.isInitialized) windowManager.removeView(prompterView)
         if (isSettingsOpen && ::settingsView.isInitialized) windowManager.removeView(settingsView)
