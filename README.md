@@ -7,13 +7,14 @@ A specialized, lightweight teleprompter application designed for the **Samsung G
 ## ✨ Key Features
 * **Floating Overlay:** Reads scripts over any other application (Camera, Zoom, YouTube, etc.).
 * **Foldable Optimized:** Responsive UI that adapts to both folded and unfolded (tablet) modes.
+* **Mirror Mode:** Flip text horizontally for use with professional teleprompter glass/hardware.
 * **Hierarchical Organization:** Manage scripts via **Projects > Scenes > Scripts**.
 * **Customizable Display:**
     * Adjustable Font Size (12sp - 72sp)
     * Variable Scroll Speed (1x - 10x)
     * Window Opacity / Transparency Control
     * High-Contrast Text Colors
-* **Persistent Settings:** Automatically remembers your font, speed, and color preferences between sessions.
+* **Persistent Settings:** Automatically remembers your font, speed, color, and mirror preferences.
 * **Offline Privacy:** All data is stored locally on the device (`JSON` format); no internet connection required.
 
 ---
@@ -22,11 +23,12 @@ A specialized, lightweight teleprompter application designed for the **Samsung G
 
 | Version | Date | Changes & Features |
 | :--- | :--- | :--- |
-| **v2.2** | Feb 7, 2026 | **Settings Persistence:** Added `SharedPreferences` logic to automatically save and load Font Size, Scroll Speed, Opacity, and Color settings. |
-| **v2.1** | Feb 6, 2026 | **UI/UX Overhaul:** Updated file icons to high-res PNGs (120dp); added "Hamburger" menus for Rename/Delete/Description options; improved slider touch targets (360dp width). |
+| **v2.3** | Feb 7, 2026 | **Mirror Mode:** Added horizontal text flipping for teleprompter glass; moved toggle to Settings Header for better UX. |
+| **v2.2** | Feb 7, 2026 | **Settings Persistence:** Added `SharedPreferences` logic to automatically save and load Font, Speed, Opacity, and Color settings. |
+| **v2.1** | Feb 6, 2026 | **UI/UX Overhaul:** Updated file icons to high-res PNGs (120dp); added "Hamburger" menus for Rename/Delete/Description options. |
 | **v2.0** | Feb 5, 2026 | **Stability Patch:** Applied `singleTask` launch mode to resolve navigation loops; fixed "back button" behavior. |
 | **v1.9** | Feb 4, 2026 | **Help System:** Integrated `HowToActivity` screen and context-aware "?" Help button. |
-| **v1.0 - v1.8** | Feb 2, 2026 | **Initial Release:** Core architecture development; implementation of Project/Scene/Script hierarchy; creation of Floating Overlay Service using `WindowManager`. |
+| **v1.0 - v1.8** | Feb 2, 2026 | **Initial Release:** Core architecture development; implementation of Project/Scene/Script hierarchy; creation of Floating Overlay Service. |
 
 ---
 
@@ -37,4 +39,4 @@ A specialized, lightweight teleprompter application designed for the **Samsung G
 
 ---
 
-*Developed by Ian T for the DIY & Content Creator Community.*
+*Developed by Ian T / IanT8055 for the DIY & Content Creator Community.*

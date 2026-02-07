@@ -1,4 +1,4 @@
-// Ref: 02/07/2026 11:10
+// Ref: 02/07/2026 13:15
 package com.example.teleprompter
 
 import android.app.Notification
@@ -31,12 +31,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toArgb // Import added for Color persistence
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
@@ -66,6 +67,7 @@ class FloatingPrompterService : Service() {
     private val _scrollSpeed = mutableFloatStateOf(2f)
     private val _windowAlpha = mutableFloatStateOf(1.0f)
     private val _textColor = mutableStateOf(Color.White)
+    private val _isMirrored = mutableStateOf(false)
     private val _isPlaying = mutableStateOf(false)
     private val _scriptText = mutableStateOf("Loading script...")
 
@@ -88,7 +90,7 @@ class FloatingPrompterService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        loadSettings() // Load saved preferences
+        loadSettings()
         createNotificationChannel()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         setupPrompterWindow()
@@ -102,7 +104,6 @@ class FloatingPrompterService : Service() {
         manager.createNotificationChannel(channel)
     }
 
-    // --- Persistence Logic ---
     private fun saveSettings() {
         val prefs = getSharedPreferences("prompter_prefs", MODE_PRIVATE)
         with(prefs.edit()) {
@@ -110,6 +111,7 @@ class FloatingPrompterService : Service() {
             putFloat("scroll_speed", _scrollSpeed.floatValue)
             putFloat("window_alpha", _windowAlpha.floatValue)
             putInt("text_color", _textColor.value.toArgb())
+            putBoolean("is_mirrored", _isMirrored.value)
             apply()
         }
     }
@@ -121,8 +123,8 @@ class FloatingPrompterService : Service() {
         _windowAlpha.floatValue = prefs.getFloat("window_alpha", 1.0f)
         val colorArgb = prefs.getInt("text_color", Color.White.toArgb())
         _textColor.value = Color(colorArgb)
+        _isMirrored.value = prefs.getBoolean("is_mirrored", false)
     }
-    // -------------------------
 
     private fun setupPrompterWindow() {
         prompterParams = WindowManager.LayoutParams(
@@ -150,6 +152,7 @@ class FloatingPrompterService : Service() {
                     scrollSpeed = _scrollSpeed.floatValue,
                     windowAlpha = _windowAlpha.floatValue,
                     textColor = _textColor.value,
+                    isMirrored = _isMirrored.value,
                     isPlaying = _isPlaying.value,
                     onTogglePlay = { _isPlaying.value = !_isPlaying.value },
                     onClose = {
@@ -200,10 +203,12 @@ class FloatingPrompterService : Service() {
                         currentSpeed = _scrollSpeed.floatValue,
                         currentAlpha = _windowAlpha.floatValue,
                         currentColor = _textColor.value,
+                        isMirrored = _isMirrored.value,
                         onFontSizeChange = { _fontSize.floatValue = it },
                         onSpeedChange = { _scrollSpeed.floatValue = it },
                         onAlphaChange = { _windowAlpha.floatValue = it },
                         onColorChange = { _textColor.value = it },
+                        onMirrorChange = { _isMirrored.value = it },
                         onClose = { toggleSettingsWindow() },
                         onDrag = { x, y -> moveWindow(settingsParams, settingsView, x, y) }
                     )
@@ -218,7 +223,7 @@ class FloatingPrompterService : Service() {
         if (isSettingsOpen) {
             windowManager.removeView(settingsView)
             isSettingsOpen = false
-            saveSettings() // Auto-save when settings close
+            saveSettings()
         } else {
             windowManager.addView(settingsView, settingsParams)
             isSettingsOpen = true
@@ -243,7 +248,7 @@ class FloatingPrompterService : Service() {
     }
 
     override fun onDestroy() {
-        saveSettings() // Save on exit
+        saveSettings()
         super.onDestroy()
         if (::prompterView.isInitialized) windowManager.removeView(prompterView)
         if (isSettingsOpen && ::settingsView.isInitialized) windowManager.removeView(settingsView)
@@ -253,6 +258,7 @@ class FloatingPrompterService : Service() {
 @Composable
 fun PrompterWindowContent(
     script: String, fontSize: Float, scrollSpeed: Float, windowAlpha: Float, textColor: Color,
+    isMirrored: Boolean,
     isPlaying: Boolean, onTogglePlay: () -> Unit, onClose: () -> Unit, onOpenSettings: () -> Unit,
     onDrag: (Float, Float) -> Unit, onResize: (Float, Float) -> Unit, onInteractionState: (Boolean) -> Unit
 ) {
@@ -274,6 +280,7 @@ fun PrompterWindowContent(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
+                // Header (Never Mirrored)
                 Row(
                     modifier = Modifier.fillMaxWidth().height(44.dp).background(Color(0xFF2C2C2C))
                         .pointerInput(Unit) {
@@ -304,10 +311,24 @@ fun PrompterWindowContent(
                         Icon(Icons.Default.Close, "Close", tint = Color(0xFFFF5252), modifier = Modifier.size(24.dp).clickable { onClose() })
                     }
                 }
+                // Script Area (Mirrored if enabled)
                 Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
-                    Text(text = script, color = textColor, fontSize = fontSize.sp, lineHeight = (fontSize * 1.4).sp, modifier = Modifier.verticalScroll(scrollState))
+                    Text(
+                        text = script,
+                        color = textColor,
+                        fontSize = fontSize.sp,
+                        lineHeight = (fontSize * 1.4).sp,
+                        modifier = Modifier
+                            .verticalScroll(scrollState)
+                            .graphicsLayer {
+                                if (isMirrored) {
+                                    scaleX = -1f // Flip horizontally
+                                }
+                            }
+                    )
                 }
             }
+            // Resize Handle (Never Mirrored)
             Box(modifier = Modifier.align(Alignment.BottomEnd).size(40.dp).pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { onInteractionState(true) },
@@ -332,10 +353,12 @@ fun SettingsPanelContent(
     currentSpeed: Float,
     currentAlpha: Float,
     currentColor: Color,
+    isMirrored: Boolean,
     onFontSizeChange: (Float) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onAlphaChange: (Float) -> Unit,
     onColorChange: (Color) -> Unit,
+    onMirrorChange: (Boolean) -> Unit,
     onClose: () -> Unit,
     onDrag: (Float, Float) -> Unit
 ) {
@@ -360,14 +383,27 @@ fun SettingsPanelContent(
                             change.consume()
                             onDrag(dragAmount.x, dragAmount.y)
                         }
-                    }.padding(16.dp),
+                    }.padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Settings", color = Color.White, fontWeight = FontWeight.Bold)
+
+                // Mirror Toggle (Moved to Header)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Mirror", color = Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp))
+                    Switch(
+                        checked = isMirrored,
+                        onCheckedChange = onMirrorChange,
+                        modifier = Modifier.scale(0.8f) // Scaled down for header
+                    )
+                }
+
                 Icon(Icons.Default.Close, "Close", tint = Color.Gray, modifier = Modifier.clickable { onClose() })
             }
 
             Column(modifier = Modifier.padding(24.dp)) {
+                // Main Content (Mirror toggle removed from here)
+
                 Text("Text Color", color = Color.LightGray, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -388,7 +424,7 @@ fun SettingsPanelContent(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(500.dp),
+                    modifier = Modifier.fillMaxWidth().height(450.dp), // Restored height since toggle is gone
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     VerticalControlItem("Font", currentFontSize.toInt().toString(), currentFontSize, onFontSizeChange, 12f..72f, Color(0xFF00C853))
@@ -428,7 +464,7 @@ fun RowScope.VerticalControlItem(
                 interactionSource = interactionSource,
                 modifier = Modifier
                     .graphicsLayer { rotationZ = -90f }
-                    .requiredWidth(450.dp),
+                    .requiredWidth(350.dp),
                 colors = SliderDefaults.colors(thumbColor = color, activeTrackColor = color),
                 thumb = {
                     Box(modifier = Modifier.size(width = 12.dp, height = 50.dp).background(color, RoundedCornerShape(2.dp)))
