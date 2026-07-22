@@ -10,7 +10,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.teleprompter"
+        applicationId = "com.tele.prompter"
         minSdk = 29
         //noinspection OldTargetApi
         targetSdk = 36
