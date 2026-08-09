@@ -23,6 +23,7 @@ A specialized, lightweight teleprompter application designed for the **Samsung G
 
 | Version | Date | Changes & Features |
 | :--- | :--- | :--- |
+| **v2.4** | Aug 9, 2026 | **Countdown Timer:** Film-leader style (rings, sweep, auto-fit numbers, ACTION tone — higher pitched, 1.5x duration). **Drag-Fix:** Play button flips correctly on manual scroll. **Seamless Loop:** END marker with configurable gaps. **Window Size:** Starting size fitted to phone screen. **Auto-Start:** Launch auto-starts countdown + scroll; countdown on both Launch and in-window play. |
 | **v2.3** | Feb 7, 2026 | **Mirror Mode:** Added horizontal text flipping for teleprompter glass; moved toggle to Settings Header for better UX. |
 | **v2.2** | Feb 7, 2026 | **Settings Persistence:** Added `SharedPreferences` logic to automatically save and load Font, Speed, Opacity, and Color settings. |
 | **v2.1** | Feb 6, 2026 | **UI/UX Overhaul:** Updated file icons to high-res PNGs (120dp); added "Hamburger" menus for Rename/Delete/Description options. |
