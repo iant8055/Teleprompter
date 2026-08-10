@@ -22,9 +22,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -37,6 +39,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.*
+
+enum class AppScreen { INTRO, MAIN, SETTINGS, HOWTO }
 
 // --- Data Models ---
 class Script(
@@ -73,9 +77,41 @@ class Project(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
+        val hasSeenIntro = prefs.getBoolean("hasSeenIntro", false)
+
         setContent {
             TeleprompterTheme {
-                TeleprompterExplorer()
+                var currentScreen by remember {
+                    mutableStateOf(if (hasSeenIntro) AppScreen.MAIN else AppScreen.INTRO)
+                }
+                var currentLang by remember { mutableStateOf(prefs.getString("app_language", "en") ?: "en") }
+                var appStrings by remember { mutableStateOf(AppStrings()) }
+
+                LaunchedEffect(currentLang) {
+                    appStrings = if (currentLang == "en") AppStrings()
+                    else translateApp(this@MainActivity, currentLang, BuildConfig.TRANSLATE_API_KEY)
+                        .getOrElse { AppStrings() }
+                }
+
+                CompositionLocalProvider(LocalAppStrings provides appStrings) {
+                    when (currentScreen) {
+                        AppScreen.INTRO -> IntroScreen(onFinished = {
+                            currentLang = prefs.getString("app_language", "en") ?: "en"
+                            currentScreen = AppScreen.MAIN
+                        })
+                        AppScreen.MAIN -> TeleprompterExplorer(
+                            onOpenSettings = { currentScreen = AppScreen.SETTINGS },
+                            onOpenHowTo = { currentScreen = AppScreen.HOWTO }
+                        )
+                        AppScreen.SETTINGS -> SettingsScreen(onBack = {
+                            currentLang = prefs.getString("app_language", "en") ?: "en"
+                            currentScreen = AppScreen.MAIN
+                        })
+                        AppScreen.HOWTO -> HowToScreen(onBack = { currentScreen = AppScreen.MAIN })
+                    }
+                }
             }
         }
     }
@@ -191,8 +227,9 @@ fun isNameDuplicate(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TeleprompterExplorer() {
+fun TeleprompterExplorer(onOpenSettings: () -> Unit = {}, onOpenHowTo: () -> Unit = {}) {
     val context = LocalContext.current
+    val s = LocalAppStrings.current
     val projects = remember { loadProjects(context) }
 
     // --- State Variables ---
@@ -250,12 +287,12 @@ fun TeleprompterExplorer() {
                 showAddDialog.value = false
                 newItemName.value = ""
             },
-            title = { Text(text = "Add New ${if (selectedScene.value != null) "Script" else if (selectedProject.value != null) "Scene" else "Project"}") },
+            title = { Text(text = if (selectedScene.value != null) s.addNewScript else if (selectedProject.value != null) s.addNewScene else s.addNewProject) },
             text = {
                 OutlinedTextField(
                     value = newItemName.value,
                     onValueChange = { newItemName.value = it },
-                    label = { Text("Name") },
+                    label = { Text(s.name) },
                     singleLine = true
                 )
             },
@@ -264,9 +301,9 @@ fun TeleprompterExplorer() {
                     onClick = {
                         val nameToCheck = newItemName.value.trim()
                         if (nameToCheck.isBlank()) {
-                            Toast.makeText(context, "Name cannot be empty", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, s.nameCannotBeEmpty, Toast.LENGTH_SHORT).show()
                         } else if (isNameDuplicate(nameToCheck, projects, selectedProject.value, selectedScene.value)) {
-                            Toast.makeText(context, "Name already exists", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, s.nameAlreadyExists, Toast.LENGTH_SHORT).show()
                         } else {
                             when {
                                 selectedScene.value != null -> selectedScene.value!!.scripts.add(Script(name = nameToCheck, content = ""))
@@ -278,13 +315,13 @@ fun TeleprompterExplorer() {
                             newItemName.value = ""
                         }
                     }
-                ) { Text("Add") }
+                ) { Text(s.add) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     showAddDialog.value = false
                     newItemName.value = ""
-                }) { Text("Cancel") }
+                }) { Text(s.cancel) }
             }
         )
     }
@@ -292,7 +329,7 @@ fun TeleprompterExplorer() {
     if (showRenameDialog.value) {
         AlertDialog(
             onDismissRequest = { showRenameDialog.value = false },
-            title = { Text("Rename '${originalRenameName.value}'") },
+            title = { Text("${s.rename} '${originalRenameName.value}'") },
             text = {
                 OutlinedTextField(
                     value = renameTargetName.value,
@@ -304,20 +341,20 @@ fun TeleprompterExplorer() {
                 Button(onClick = {
                     val trimmedName = renameTargetName.value.trim()
                     if (trimmedName.isBlank()) {
-                        Toast.makeText(context, "Name cannot be empty", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, s.nameCannotBeEmpty, Toast.LENGTH_SHORT).show()
                     } else if (trimmedName.equals(originalRenameName.value, ignoreCase = true)) {
                         showRenameDialog.value = false
                     } else if (isNameDuplicate(trimmedName, projects, selectedProject.value, selectedScene.value)) {
-                        Toast.makeText(context, "Name already exists", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, s.nameAlreadyExists, Toast.LENGTH_SHORT).show()
                     } else {
                         renameAction.value?.invoke(trimmedName)
                         saveProjects(context, projects)
                         showRenameDialog.value = false
                     }
-                }) { Text("OK") }
+                }) { Text(s.ok) }
             },
             dismissButton = {
-                Button(onClick = { showRenameDialog.value = false }) { Text("Cancel") }
+                Button(onClick = { showRenameDialog.value = false }) { Text(s.cancel) }
             }
         )
     }
@@ -325,8 +362,8 @@ fun TeleprompterExplorer() {
     if (showDeleteDialog.value) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog.value = false },
-            title = { Text("Confirm Delete") },
-            text = { Text("Are you sure you want to delete '${deleteTargetName.value}'?") },
+            title = { Text(s.confirmDelete) },
+            text = { Text("${s.deleteQuestion} '${deleteTargetName.value}'?") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -335,10 +372,10 @@ fun TeleprompterExplorer() {
                         showDeleteDialog.value = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-                ) { Text("Delete", color = Color.White) }
+                ) { Text(s.delete, color = Color.White) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog.value = false }) { Text("Cancel") }
+                TextButton(onClick = { showDeleteDialog.value = false }) { Text(s.cancel) }
             }
         )
     }
@@ -356,84 +393,100 @@ fun TeleprompterExplorer() {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    val pName = selectedProject.value?.name ?: ""
-                    val sName = selectedScene.value?.name ?: ""
-                    val scName = selectedScript.value?.name ?: ""
-                    val titleText = when {
-                        selectedScript.value != null -> "Project ($pName) Scene ($sName) Script ($scName)"
-                        selectedScene.value != null -> "Project ($pName) Scene ($sName)"
-                        selectedProject.value != null -> "Project ($pName)"
-                        else -> "Projects"
-                    }
-                    Text(text = titleText, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                },
-                navigationIcon = {
-                    if (selectedProject.value != null) {
-                        IconButton(onClick = {
-                            if (selectedScript.value != null) {
-                                saveProjects(context, projects)
-                                selectedScript.value = null
-                            } else if (selectedScene.value != null) {
-                                selectedScene.value = null
-                            } else {
-                                selectedProject.value = null
-                            }
-                        }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                    }
-                },
-                actions = {
-                    if (selectedScript.value != null) {
-                        Button(
-                            onClick = {
-                                selectedScript.value!!.content = editorContent.value
-                                saveProjects(context, projects)
-                                if (!Settings.canDrawOverlays(context)) {
-                                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri())
-                                    context.startActivity(intent)
-                                } else {
-                                    val intent = Intent(context, FloatingPrompterService::class.java)
-                                    intent.putExtra("SCRIPT_TEXT", editorContent.value)
-                                    context.startForegroundService(intent)
-                                    (context as? ComponentActivity)?.moveTaskToBack(true)
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853))
-                        ) {
-                            Icon(Icons.Default.PlayArrow, null)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Launch")
+            when {
+                selectedScript.value != null -> ScriptToolbar(
+                    projectName = selectedProject.value?.name ?: "",
+                    sceneName = selectedScene.value?.name ?: "",
+                    scriptName = selectedScript.value?.name ?: "",
+                    onNavigateToProject = {
+                        saveProjects(context, projects)
+                        selectedScript.value = null
+                        selectedScene.value = null
+                        selectedProject.value = null
+                    },
+                    onNavigateToScene = {
+                        saveProjects(context, projects)
+                        selectedScript.value = null
+                        selectedScene.value = null
+                    },
+                    onNavigateToScript = {
+                        saveProjects(context, projects)
+                        selectedScript.value = null
+                    },
+                    onLaunch = {
+                        selectedScript.value!!.content = editorContent.value
+                        saveProjects(context, projects)
+                        if (!Settings.canDrawOverlays(context)) {
+                            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri())
+                            context.startActivity(intent)
+                        } else {
+                            val intent = Intent(context, FloatingPrompterService::class.java)
+                            intent.putExtra("SCRIPT_TEXT", editorContent.value)
+                            context.startForegroundService(intent)
+                            (context as? ComponentActivity)?.moveTaskToBack(true)
                         }
-                    } else {
-                        SmallFloatingActionButton(
-                            onClick = {
-                                val intent = Intent(context, HowToActivity::class.java)
-                                context.startActivity(intent)
-                            },
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = Color.White,
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) { Text("?", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            )
+                    },
+                    launchLabel = s.launch
+                )
+                selectedScene.value != null -> ScriptListToolbar(
+                    projectName = selectedProject.value?.name ?: "",
+                    sceneName = selectedScene.value?.name ?: "",
+                    onNavigateToProjects = {
+                        selectedScene.value = null
+                        selectedProject.value = null
+                    },
+                    onNavigateToScene = { selectedScene.value = null },
+                    onOpenSettings = onOpenSettings,
+                    onOpenHowTo = onOpenHowTo,
+                    s = s
+                )
+                selectedProject.value != null -> SceneListToolbar(
+                    projectName = selectedProject.value?.name ?: "",
+                    onNavigateToProjects = { selectedProject.value = null },
+                    onOpenSettings = onOpenSettings,
+                    onOpenHowTo = onOpenHowTo,
+                    s = s
+                )
+                else -> TopAppBar(
+                    title = { Text(s.projects, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+                    actions = {
+                        var menuExpanded by remember { mutableStateOf(false) }
+                        Box(modifier = Modifier.padding(end = 4.dp)) {
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Icon(Icons.Default.MoreVert, "More options")
+                            }
+                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(s.settings) },
+                                    onClick = { menuExpanded = false; onOpenSettings() },
+                                    leadingIcon = { Icon(Icons.Default.Settings, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(s.howToUse) },
+                                    onClick = { menuExpanded = false; onOpenHowTo() },
+                                    leadingIcon = { Icon(Icons.Default.Info, null) }
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                )
+            }
         },
         floatingActionButton = {
             if (selectedScript.value == null) {
                 FloatingActionButton(
                     onClick = {
                         val (title, action) = when {
-                            selectedScene.value != null -> "Enter Script Name" to { name: String ->
+                            selectedScene.value != null -> s.enterScriptName to { name: String ->
                                 selectedScene.value!!.scripts.add(Script(name = name, content = ""))
                                 Unit
                             }
-                            selectedProject.value != null -> "Enter Scene Name" to { name: String ->
+                            selectedProject.value != null -> s.enterSceneName to { name: String ->
                                 selectedProject.value!!.scenes.add(Scene(name = name))
                                 Unit
                             }
-                            else -> "Enter Project Name" to { name: String ->
+                            else -> s.enterProjectName to { name: String ->
                                 projects.add(Project(name = name))
                                 Unit
                             }
@@ -447,14 +500,14 @@ fun TeleprompterExplorer() {
             }
         }
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding).fillMaxSize().background(Color(0xFFF0F0F0))) {
+        Box(modifier = Modifier.padding(innerPadding).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             if (selectedScript.value != null) {
                 Column(modifier = Modifier.fillMaxSize().padding(16.dp).imePadding()) {
                     OutlinedTextField(
                         value = editorContent.value,
                         onValueChange = { editorContent.value = it },
-                        modifier = Modifier.fillMaxSize().background(Color.White),
-                        placeholder = { Text("Type your script here...") },
+                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
+                        placeholder = { Text(s.typeScriptHere) },
                         singleLine = false,
                         maxLines = Int.MAX_VALUE
                     )
@@ -558,10 +611,11 @@ fun FileIconItem(
     onDescription: () -> Unit // New Parameter
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val s = LocalAppStrings.current
 
     Card(
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth().height(180.dp).clickable { onClick() }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -571,7 +625,7 @@ fun FileIconItem(
 
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 DropdownMenuItem(
-                    text = { Text("Description") },
+                    text = { Text(s.description) },
                     onClick = {
                         expanded = false
                         onDescription()
@@ -579,7 +633,7 @@ fun FileIconItem(
                     leadingIcon = { Icon(Icons.Default.Info, null) }
                 )
                 DropdownMenuItem(
-                    text = { Text("Rename") },
+                    text = { Text(s.rename) },
                     onClick = {
                         expanded = false
                         onRename()
@@ -587,7 +641,7 @@ fun FileIconItem(
                     leadingIcon = { Icon(Icons.Default.Edit, null) }
                 )
                 DropdownMenuItem(
-                    text = { Text("Delete") },
+                    text = { Text(s.delete) },
                     onClick = {
                         expanded = false
                         onDelete()
@@ -613,6 +667,7 @@ fun DescriptionDialog(
     onSave: (String) -> Unit
 ) {
     var text by remember { mutableStateOf(initialDescription) }
+    val s = LocalAppStrings.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -622,16 +677,215 @@ fun DescriptionDialog(
                 value = text,
                 onValueChange = { text = it },
                 modifier = Modifier.fillMaxWidth().height(150.dp),
-                placeholder = { Text("Enter description...") },
+                placeholder = { Text(s.enterDescription) },
                 colors = TextFieldDefaults.colors(unfocusedContainerColor = Color.Transparent, focusedContainerColor = Color.Transparent)
             )
         },
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { text = ""; onSave("") }) { Text("Clear", color = Color.Red) }
-                Button(onClick = { onSave(text) }) { Text("Save") }
+                TextButton(onClick = { text = ""; onSave("") }) { Text(s.clear, color = Color.Red) }
+                Button(onClick = { onSave(text) }) { Text(s.save) }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(s.cancel) } }
     )
+}
+
+@Composable
+fun ScriptToolbar(
+    projectName: String,
+    sceneName: String,
+    scriptName: String,
+    onNavigateToProject: () -> Unit,
+    onNavigateToScene: () -> Unit,
+    onNavigateToScript: () -> Unit,
+    onLaunch: () -> Unit,
+    launchLabel: String
+) {
+    val launchGreen = colorResource(R.color.launch_green)
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        tonalElevation = 3.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .height(110.dp)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BreadcrumbNavItem(
+                icon = painterResource(R.drawable.projecticon),
+                name = projectName,
+                dimmed = true,
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateToProject
+            )
+            BreadcrumbSeparator()
+            BreadcrumbNavItem(
+                icon = painterResource(R.drawable.sceneicon),
+                name = sceneName,
+                dimmed = true,
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateToScene
+            )
+            BreadcrumbSeparator()
+            BreadcrumbNavItem(
+                icon = painterResource(R.drawable.scripticon),
+                name = scriptName,
+                dimmed = true,
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateToScript
+            )
+            Button(
+                onClick = onLaunch,
+                colors = ButtonDefaults.buttonColors(containerColor = launchGreen),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.padding(start = 4.dp)
+            ) {
+                Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(2.dp))
+                Text(launchLabel, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun BreadcrumbNavItem(
+    icon: Painter,
+    name: String,
+    dimmed: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)?
+) {
+    val itemAlpha = if (dimmed) 0.6f else 1f
+    val fontWeight = if (dimmed) FontWeight.Normal else FontWeight.Bold
+    val baseModifier = modifier
+        .padding(horizontal = 2.dp, vertical = 4.dp)
+        .alpha(itemAlpha)
+    val finalModifier = if (onClick != null) baseModifier.clickable(onClick = onClick) else baseModifier
+
+    Column(
+        modifier = finalModifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            painter = icon,
+            contentDescription = null,
+            modifier = Modifier.size(66.dp),
+            tint = Color.Unspecified
+        )
+        Text(
+            text = name,
+            fontSize = 11.sp,
+            fontWeight = fontWeight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+fun BreadcrumbSeparator() {
+    Text(
+        text = "›",
+        fontSize = 18.sp,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+        modifier = Modifier.padding(horizontal = 2.dp)
+    )
+}
+
+@Composable
+fun BreadcrumbMenuButton(onOpenSettings: () -> Unit, onOpenHowTo: () -> Unit, s: AppStrings) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Box(modifier = Modifier.padding(end = 4.dp)) {
+        IconButton(onClick = { menuExpanded = true }) {
+            Icon(Icons.Default.MoreVert, "More options")
+        }
+        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            DropdownMenuItem(
+                text = { Text(s.settings) },
+                onClick = { menuExpanded = false; onOpenSettings() },
+                leadingIcon = { Icon(Icons.Default.Settings, null) }
+            )
+            DropdownMenuItem(
+                text = { Text(s.howToUse) },
+                onClick = { menuExpanded = false; onOpenHowTo() },
+                leadingIcon = { Icon(Icons.Default.Info, null) }
+            )
+        }
+    }
+}
+
+@Composable
+fun SceneListToolbar(
+    projectName: String,
+    onNavigateToProjects: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenHowTo: () -> Unit,
+    s: AppStrings
+) {
+    Surface(color = MaterialTheme.colorScheme.primaryContainer, tonalElevation = 3.dp) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .height(110.dp)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BreadcrumbNavItem(
+                icon = painterResource(R.drawable.projecticon),
+                name = projectName,
+                dimmed = true,
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateToProjects
+            )
+            BreadcrumbMenuButton(onOpenSettings = onOpenSettings, onOpenHowTo = onOpenHowTo, s = s)
+        }
+    }
+}
+
+@Composable
+fun ScriptListToolbar(
+    projectName: String,
+    sceneName: String,
+    onNavigateToProjects: () -> Unit,
+    onNavigateToScene: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenHowTo: () -> Unit,
+    s: AppStrings
+) {
+    Surface(color = MaterialTheme.colorScheme.primaryContainer, tonalElevation = 3.dp) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .height(110.dp)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BreadcrumbNavItem(
+                icon = painterResource(R.drawable.projecticon),
+                name = projectName,
+                dimmed = true,
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateToProjects
+            )
+            BreadcrumbSeparator()
+            BreadcrumbNavItem(
+                icon = painterResource(R.drawable.sceneicon),
+                name = sceneName,
+                dimmed = true,
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateToScene
+            )
+            BreadcrumbMenuButton(onOpenSettings = onOpenSettings, onOpenHowTo = onOpenHowTo, s = s)
+        }
+    }
 }

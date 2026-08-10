@@ -83,7 +83,7 @@ class FloatingPrompterService : Service() {
 
     private val _fontSize = mutableFloatStateOf(32f)
     private val _scrollSpeed = mutableFloatStateOf(2f)
-    private val _windowAlpha = mutableFloatStateOf(1.0f)
+    private val _windowAlpha = mutableFloatStateOf(0.75f)
     private val _textColor = mutableStateOf(Color.White)
     private val _isMirrored = mutableStateOf(false)
     private val _isLoop = mutableStateOf(false)
@@ -122,7 +122,6 @@ class FloatingPrompterService : Service() {
         createNotificationChannel()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         setupPrompterWindow()
-        setupSettingsWindow()
         windowManager.addView(prompterView, prompterParams)
     }
 
@@ -150,7 +149,7 @@ class FloatingPrompterService : Service() {
         val prefs = getSharedPreferences("prompter_prefs", MODE_PRIVATE)
         _fontSize.floatValue = prefs.getFloat("font_size", 32f)
         _scrollSpeed.floatValue = prefs.getFloat("scroll_speed", 2f)
-        _windowAlpha.floatValue = prefs.getFloat("window_alpha", 1.0f)
+        _windowAlpha.floatValue = prefs.getFloat("window_alpha", 0.75f)
         val colorArgb = prefs.getInt("text_color", Color.White.toArgb())
         _textColor.value = Color(colorArgb)
         _isMirrored.value = prefs.getBoolean("is_mirrored", false)
@@ -215,14 +214,15 @@ class FloatingPrompterService : Service() {
     }
 
     private fun setupSettingsWindow() {
+        val displayMetrics = resources.displayMetrics
         settingsParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            (displayMetrics.heightPixels * 0.55f).toInt(),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            0,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.CENTER
+            gravity = Gravity.BOTTOM
         }
 
         settingsView = ComposeView(this).apply {
@@ -233,29 +233,41 @@ class FloatingPrompterService : Service() {
             this.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
 
             setContent {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    SettingsPanelContent(
-                        currentFontSize = _fontSize.floatValue,
-                        currentSpeed = _scrollSpeed.floatValue,
-                        currentAlpha = _windowAlpha.floatValue,
-                        currentColor = _textColor.value,
-                        isMirrored = _isMirrored.value,
-                        isLoop = _isLoop.value,
-                        currentCountdown = _countdownSeconds.intValue,
-                        onFontSizeChange = { _fontSize.floatValue = it },
-                        onSpeedChange = { _scrollSpeed.floatValue = it },
-                        onAlphaChange = { _windowAlpha.floatValue = it },
-                        onColorChange = { _textColor.value = it },
-                        onMirrorChange = { _isMirrored.value = it },
-                        onLoopChange = { _isLoop.value = it },
-                        onCountdownChange = { _countdownSeconds.intValue = it },
-                        onClose = { toggleSettingsWindow() },
-                        onDrag = { x, y -> moveWindow(settingsParams, settingsView, x, y) }
-                    )
-                }
+                val savedFontSize = remember { _fontSize.floatValue }
+                val savedSpeed = remember { _scrollSpeed.floatValue }
+                val savedAlpha = remember { _windowAlpha.floatValue }
+                val savedColor = remember { _textColor.value }
+                val savedMirror = remember { _isMirrored.value }
+                val savedLoop = remember { _isLoop.value }
+                val savedCountdown = remember { _countdownSeconds.intValue }
+
+                SettingsPanelContent(
+                    currentFontSize = _fontSize.floatValue,
+                    currentSpeed = _scrollSpeed.floatValue,
+                    currentAlpha = _windowAlpha.floatValue,
+                    currentColor = _textColor.value,
+                    isMirrored = _isMirrored.value,
+                    isLoop = _isLoop.value,
+                    currentCountdown = _countdownSeconds.intValue,
+                    onFontSizeChange = { _fontSize.floatValue = it },
+                    onSpeedChange = { _scrollSpeed.floatValue = it },
+                    onAlphaChange = { _windowAlpha.floatValue = it },
+                    onColorChange = { _textColor.value = it },
+                    onMirrorChange = { _isMirrored.value = it },
+                    onLoopChange = { _isLoop.value = it },
+                    onCountdownChange = { _countdownSeconds.intValue = it },
+                    onSave = { saveSettings(); toggleSettingsWindow() },
+                    onCancel = {
+                        _fontSize.floatValue = savedFontSize
+                        _scrollSpeed.floatValue = savedSpeed
+                        _windowAlpha.floatValue = savedAlpha
+                        _textColor.value = savedColor
+                        _isMirrored.value = savedMirror
+                        _isLoop.value = savedLoop
+                        _countdownSeconds.intValue = savedCountdown
+                        toggleSettingsWindow()
+                    }
+                )
             }
             lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_START)
             lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
@@ -266,8 +278,8 @@ class FloatingPrompterService : Service() {
         if (isSettingsOpen) {
             windowManager.removeView(settingsView)
             isSettingsOpen = false
-            saveSettings()
         } else {
+            setupSettingsWindow()
             windowManager.addView(settingsView, settingsParams)
             isSettingsOpen = true
         }
@@ -599,93 +611,86 @@ fun SettingsPanelContent(
     onMirrorChange: (Boolean) -> Unit,
     onLoopChange: (Boolean) -> Unit,
     onCountdownChange: (Int) -> Unit,
-    onClose: () -> Unit,
-    onDrag: (Float, Float) -> Unit
+    onSave: () -> Unit,
+    onCancel: () -> Unit
 ) {
     val presetColors = listOf(Color.White, Color(0xFFFFEB3B), Color(0xFF00E676), Color(0xFF00E5FF), Color(0xFFEA80FC))
-    val firstRowColors = presetColors.take(3)
-    val secondRowColors = presetColors.drop(3)
 
-    val configuration = LocalConfiguration.current
-    val cardWidth = min(configuration.screenWidthDp * 0.9f, 420f).dp
-
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
-        elevation = CardDefaults.cardElevation(16.dp),
-        modifier = Modifier.width(cardWidth)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color(0xFF1A1A1A),
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth().background(Color(0xFF333333))
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            onDrag(dragAmount.x, dragAmount.y)
-                        }
-                    }.padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Settings", color = Color.White, fontWeight = FontWeight.Bold)
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(width = 40.dp, height = 4.dp).background(Color(0xFF555555), RoundedCornerShape(2.dp)))
+            }
 
-                // Mirror / Loop Toggles (label above switch)
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onCancel) {
+                    Text("Cancel", color = Color.LightGray, fontSize = 15.sp)
+                }
+                Text("Settings", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                TextButton(
+                    onClick = onSave,
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF00C853))
+                ) {
+                    Text("Save", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFF333333))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+            ) {
+                HorizontalSliderRow("Font", currentFontSize, 12f..72f, currentFontSize.toInt().toString(), Color(0xFF00C853), onFontSizeChange)
+                HorizontalSliderRow("Speed", currentSpeed, 1f..10f, currentSpeed.toInt().toString(), Color(0xFFFFAB00), onSpeedChange)
+                HorizontalSliderRow("Opacity", currentAlpha, 0.1f..1.0f, "${(currentAlpha * 100).toInt()}%", Color(0xFF2979FF), onAlphaChange)
+
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = Color(0xFF333333))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Mirror", color = Color.LightGray, fontSize = 12.sp)
-                        Switch(
-                            checked = isMirrored,
-                            onCheckedChange = onMirrorChange,
-                            modifier = Modifier.scale(0.8f) // Scaled down for header
-                        )
+                        Switch(checked = isMirrored, onCheckedChange = onMirrorChange)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Loop", color = Color.LightGray, fontSize = 12.sp)
-                        Switch(
-                            checked = isLoop,
-                            onCheckedChange = onLoopChange,
-                            modifier = Modifier.scale(0.8f) // Scaled down for header
-                        )
+                        Switch(checked = isLoop, onCheckedChange = onLoopChange)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Countdown", color = Color.LightGray, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        CountdownDropdown(currentCountdown, onCountdownChange)
                     }
                 }
 
-                Icon(Icons.Default.Close, "Close", tint = Color.Gray, modifier = Modifier.clickable { onClose() })
-            }
-
-            Column(modifier = Modifier.padding(24.dp)) {
-                // Main Content (Mirror toggle removed from here)
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = Color(0xFF333333))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Text("Text Color", color = Color.LightGray, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(12.dp))
-
+                Spacer(modifier = Modifier.height(10.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    firstRowColors.forEach { color ->
+                    presetColors.forEach { color ->
                         ColorBubble(color, currentColor == color) { onColorChange(color) }
                     }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    secondRowColors.forEach { color ->
-                        ColorBubble(color, currentColor == color) { onColorChange(color) }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-                Text("Countdown Before Start", color = Color.LightGray, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(12.dp))
-                CountdownDropdown(currentCountdown, onCountdownChange)
-
-                Spacer(modifier = Modifier.height(24.dp))
-                HorizontalDivider(thickness = 6.dp, color = Color(0xFF333333))
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(380.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    VerticalControlItem("Font", currentFontSize.toInt().toString(), currentFontSize, onFontSizeChange, 12f..72f, Color(0xFF00C853))
-                    VerticalControlItem("Opacity", "${(currentAlpha * 100).toInt()}%", currentAlpha, onAlphaChange, 0.1f..1.0f, Color(0xFF2979FF))
-                    VerticalControlItem("Speed", currentSpeed.toInt().toString(), currentSpeed, onSpeedChange, 1f..10f, Color(0xFFFFAB00))
-                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
@@ -735,32 +740,39 @@ fun ColorBubble(color: Color, isSelected: Boolean, onClick: () -> Unit) {
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RowScope.VerticalControlItem(
-    label: String, valueText: String, value: Float, onValueChange: (Float) -> Unit,
-    range: ClosedFloatingPointRange<Float>, color: Color
+fun HorizontalSliderRow(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    valueLabel: String,
+    color: Color,
+    onValueChange: (Float) -> Unit
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxHeight().weight(1f)) {
-        Text(label, color = Color.LightGray, fontSize = 12.sp)
-        Text(valueText, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = Color.LightGray, fontSize = 13.sp, modifier = Modifier.width(64.dp))
+        Text(valueLabel, color = Color.White, fontSize = 13.sp, textAlign = TextAlign.End, modifier = Modifier.width(40.dp))
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = range,
+            modifier = Modifier.weight(1f).padding(start = 8.dp),
+            colors = SliderDefaults.colors(thumbColor = color, activeTrackColor = color)
+        )
+    }
+}
 
-        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Slider(
-                value = value,
-                onValueChange = onValueChange,
-                valueRange = range,
-                interactionSource = interactionSource,
-                modifier = Modifier
-                    .graphicsLayer { rotationZ = -90f }
-                    .requiredWidth(280.dp),
-                colors = SliderDefaults.colors(thumbColor = color, activeTrackColor = color),
-                thumb = {
-                    Box(modifier = Modifier.size(width = 12.dp, height = 50.dp).background(color, RoundedCornerShape(2.dp)))
-                }
-            )
-        }
+@Composable
+fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = Color.LightGray, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

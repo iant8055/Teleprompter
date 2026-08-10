@@ -14,10 +14,11 @@ android {
         minSdk = 29
         //noinspection OldTargetApi
         targetSdk = 36
-        versionCode = 6
-        versionName = "2.4"
+        versionCode = 7
+        versionName = "3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "TRANSLATE_API_KEY", "\"AIzaSyA1sGtPJxftiTHpRSB1Y2WibsYSW_jhxWY\"")
     }
 
     buildTypes {
@@ -35,6 +36,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
