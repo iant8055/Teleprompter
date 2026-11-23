@@ -95,6 +95,7 @@ data class SlideStrings(
 )
 
 private val DEFAULT = SlideStrings()
+private val slideStringsCache = HashMap<String, SlideStrings>()
 
 private fun SlideStrings.toList() = listOf(
     welcomeTitle, welcomeSub, langHint,
@@ -142,6 +143,7 @@ fun packageSHA1(context: Context): String {
 
 suspend fun translateSlides(context: Context, targetLang: String, apiKey: String): Result<SlideStrings> {
     if (targetLang == "en") return Result.success(DEFAULT)
+    slideStringsCache[targetLang]?.let { return Result.success(it) }
     return withContext(Dispatchers.IO) {
         try {
             val texts = DEFAULT.toList()
@@ -173,6 +175,7 @@ suspend fun translateSlides(context: Context, targetLang: String, apiKey: String
                 .getJSONObject("data").getJSONArray("translations")
             val translated = List(arr.length()) { i -> arr.getJSONObject(i).getString("translatedText") }
                 .toSlideStrings()
+            slideStringsCache[targetLang] = translated
             Result.success(translated)
         } catch (e: Exception) {
             Log.e("Translate", "Exception: ${e.message}", e)

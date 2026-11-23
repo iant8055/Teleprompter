@@ -50,13 +50,13 @@ data class AppStrings(
     // Main Screen
     val sectionMainScreen: String        = "Main Screen",
     val howToOverviewTitle: String       = "Overview",
-    val howToOverviewBody: String        = "When you first open Teleprompter you are provided a default Project folder. Tap the blue + button in the lower right to create a new Project.",
+    val howToOverviewBody: String        = "A specialized, lightweight teleprompter application designed for Android devices. This tool features a floating overlay service, allowing content creators to read scripts while simultaneously recording via the camera app or streaming live. \n\n",
     val howToMultiLangTitle: String      = "Multi-language Support",
     val howToMultiLangBody: String       = "The app interface can be displayed in multiple languages. Tap the three-dot menu on the main screen and select Settings, then choose your preferred language from the dropdown list.\n\nThe entire app — menus, buttons, and labels — will update to your chosen language automatically.",
     // Organization
     val sectionOrganization: String      = "Organization",
     val howToNavTitle: String            = "Navigation",
-    val howToNavBody: String             = "The library is organized into Projects › Scenes › Scripts. Each screen has a breadcrumb toolbar at the top — tap any icon to jump back to that level.",
+    val howToNavBody: String             = "When you first open Teleprompter you are provided a default Project folder. Tap the blue + button in the lower right to create a new Project.\n\nThe library is organized into Projects › Scenes › Scripts. Each screen has a breadcrumb toolbar at the top — tap any icon to jump back to that level.",
     // Editing
     val sectionEditing: String           = "Editing",
     val howToAddTitle: String            = "Add",
@@ -75,13 +75,14 @@ data class AppStrings(
     val howToSettingsBody: String        = "Tap the gear icon to open the Settings panel. Use sliders to adjust Font Size, Speed, and Opacity. Choose a text color from the color row. Toggle Mirror, and set a Countdown timer before scrolling begins.",
     val howToLoopTitle: String           = "Loop",
     val howToLoopBody: String            = "Enable Loop in the overlay Settings panel to replay your script continuously without stopping.\n\nWhen Loop is on, a duplicate of the script is shown below the original. As you reach the end, the scroll position resets seamlessly so the text flows back from the top without any jump.",
-    val howToCountdownTitle: String      = "Countdown",
-    val howToCountdownBody: String       = "Set a countdown before your script starts scrolling. Open Settings in the overlay and choose from Off, 3, 5, or 10 seconds.\n\nWhen you tap Play, a full-screen clock animation counts down with a beep each second. At zero it flashes 'ACTION!' then scrolling begins automatically. Tap the screen at any time to cancel the countdown.",
+    val howToCountdownTitle: String      = "Countdown Timer",
+    val howToCountdownBody: String       = "Set a Countdown Timer before your script starts scrolling. Open Settings in the overlay and choose from Off, 3, 5, or 10 seconds.\n\nWhen you tap Play, a full-screen clock animation counts down with a beep each second. At zero it flashes 'ACTION!' then scrolling begins automatically. Tap the screen at any time to cancel the countdown.",
 )
 
 val LocalAppStrings = staticCompositionLocalOf { AppStrings() }
 
 private val DEFAULT_APP = AppStrings()
+private val appStringsCache = HashMap<String, AppStrings>()
 
 private fun AppStrings.toList() = listOf(
     projects, launch, settings, howToUse,
@@ -140,6 +141,7 @@ private fun List<String>.toAppStrings() = AppStrings(
 
 suspend fun translateApp(context: Context, targetLang: String, apiKey: String): Result<AppStrings> {
     if (targetLang == "en") return Result.success(DEFAULT_APP)
+    appStringsCache[targetLang]?.let { return Result.success(it) }
     return withContext(Dispatchers.IO) {
         try {
             val texts = DEFAULT_APP.toList()
@@ -149,11 +151,13 @@ suspend fun translateApp(context: Context, targetLang: String, apiKey: String): 
             sb.append("&format=text")
             texts.forEach { sb.append("&q=").append(URLEncoder.encode(it, "UTF-8")) }
 
+            val sha1 = packageSHA1(context)
+            Log.d("TranslateApp", "pkg=${context.packageName} sha1=$sha1 strings=${texts.size} target=$targetLang")
             val conn = URL(sb.toString()).openConnection() as HttpURLConnection
             conn.connectTimeout = 8000
             conn.readTimeout = 8000
             conn.setRequestProperty("X-Android-Package", context.packageName)
-            conn.setRequestProperty("X-Android-Cert", packageSHA1(context))
+            conn.setRequestProperty("X-Android-Cert", sha1)
 
             val code = conn.responseCode
             if (code != HttpURLConnection.HTTP_OK) {
@@ -170,6 +174,7 @@ suspend fun translateApp(context: Context, targetLang: String, apiKey: String): 
             val translated = List(arr.length()) { i ->
                 arr.getJSONObject(i).getString("translatedText")
             }.toAppStrings()
+            appStringsCache[targetLang] = translated
             Result.success(translated)
         } catch (e: Exception) {
             Log.e("TranslateApp", "Exception: ${e.message}", e)
