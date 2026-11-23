@@ -14,8 +14,8 @@ android {
         minSdk = 29
         //noinspection OldTargetApi
         targetSdk = 36
-        versionCode = 7
-        versionName = "3.0"
+        versionCode = 8
+        versionName = "3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "TRANSLATE_API_KEY", "\"AIzaSyA1sGtPJxftiTHpRSB1Y2WibsYSW_jhxWY\"")
@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.graphics.path)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

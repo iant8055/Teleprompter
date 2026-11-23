@@ -9,6 +9,7 @@ activityCompose = "1.8.0"
 kotlin = "2.2.10"
 composeBom = "2024.09.00"
 material = "1.14.0"
+graphicsPath = "1.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -26,6 +27,8 @@ androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 material = { module = "com.google.android.material:material", version.ref = "material" }
+# Pinned above Compose's transitive 1.0.1 (built with NDK r25) to clear Play's 16 KB "older NDK" warning
+androidx-graphics-path = { group = "androidx.graphics", name = "graphics-path", version.ref = "graphicsPath" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
